@@ -1,0 +1,98 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+env:
+  SMTP_HOST: smtp.gmail.com
+  SMTP_PORT: "587"
+  SMTP_USER: webarchitects.co.in@gmail.com
+  SMTP_PASS: xdrrrixusgftqwgk
+  EMAIL_FROM: webarchitects.co.in@gmail.com
+  EMAIL_TO: webarchitects.co.in@gmail.com
+
+jobs:
+  test-smtp:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Test SMTP connection
+        run: |
+          echo "Testing SMTP connection to ${{ env.SMTP_HOST }}:${{ env.SMTP_PORT }}"
+          timeout 10 bash -c "cat < /dev/null > /dev/tcp/${{ env.SMTP_HOST }}/${{ env.SMTP_PORT }}" && echo "SMTP port open" || echo "SMTP port connection failed"
+        env:
+          SMTP_HOST: smtp.gmail.com
+          SMTP_PORT: "587"
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run lint
+        run: npm run lint
+
+      - name: Run typecheck
+        run: npm run typecheck
+
+      - name: Run tests
+        run: npm test -- --passWithNoTests
+
+      - name: Build
+        run: npm run build
+
+  notify-success:
+    needs: test
+    if: success()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send success email
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 587
+          username: ${{ env.SMTP_USER }}
+          password: ${{ env.SMTP_PASS }}
+          subject: "✅ CI/CD Pipeline Succeeded - ${{ github.repository }}"
+          to: ${{ env.EMAIL_TO }}
+          from: ${{ env.EMAIL_FROM }}
+          body: |
+            Pipeline: ${{ github.workflow }}
+            Branch: ${{ github.ref_name }}
+            Commit: ${{ github.sha }}
+            Author: ${{ github.actor }}
+            Run: ${{ github.run_url }}
+
+  notify-failure:
+    needs: test
+    if: failure()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send failure email
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 587
+          username: ${{ env.SMTP_USER }}
+          password: ${{ env.SMTP_PASS }}
+          subject: "❌ CI/CD Pipeline Failed - ${{ github.repository }}"
+          to: ${{ env.EMAIL_TO }}
+          from: ${{ env.EMAIL_FROM }}
+          body: |
+            Pipeline: ${{ github.workflow }}
+            Branch: ${{ github.ref_name }}
+            Commit: ${{ github.sha }}
+            Author: ${{ github.actor }}
+            Run: ${{ github.run_url }}
+            Error: Check the workflow run for details.
